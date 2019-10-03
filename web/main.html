@@ -1,0 +1,19 @@
+{{ define "list" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Issue Main Page</title>
+</head>
+<body>
+    <ul>
+    {{range $key, $value := .}}
+    <li>
+        <a href="/report/{{$key}}">{{$value.Title}}</a>
+    </li>
+    {{end}}
+</ul>
+</body>
+</html>
+{{end}}
