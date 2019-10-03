@@ -7,6 +7,8 @@
     <title>Issue Main Page</title>
 </head>
 <body>
+    <h1>Issues</h1>
+    <p>Total Issues: {{len .}}</p>
     <ul>
     {{range $key, $value := .}}
     <li>
