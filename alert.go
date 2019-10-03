@@ -56,8 +56,7 @@ func init() {
 }
 
 type Ticket struct {
-	// TODO: Add ID to Ticket
-	// ID          string
+	ID          string
 	User        string
 	Title       string
 	Description string
@@ -119,9 +118,11 @@ func editReport(c echo.Context) error {
 
 	// Empty title means no results
 	if ticket.Title == "" || err != nil {
-		fmt.Println("Not Found")
 		return c.Redirect(http.StatusTemporaryRedirect, baseURL)
 	}
+
+	ticket.ID = id
+
 	return c.Render(http.StatusOK, "report", ticket)
 }
 
@@ -131,11 +132,12 @@ func updateReport(c echo.Context) error {
 	description := c.FormValue("description")
 
 	ticket := Ticket{
+		ID:          id,
 		Title:       title,
 		Description: description,
 	}
 
-	_, err := updateTicket(db, id, ticket)
+	_, err := updateTicket(db, &ticket)
 	if err != nil {
 		return c.NoContent(http.StatusNotFound)
 	}
@@ -155,15 +157,16 @@ func newReport(c echo.Context) error {
 	ticketID := hex.EncodeToString(ticketHash[:])
 
 	ticket := Ticket{
+		ID:          ticketID,
 		User:        data["user_id"][0],
 		Title:       data["text"][0],
 		Description: "Describe ticket here",
 		Created:     cTime,
 	}
 
-	_, err = addTicketToDB(db, ticketID, ticket)
+	_, err = addTicketToDB(db, &ticket)
 	if err != nil {
-		fmt.Errorf("Error Adding Ticket to DB: %s", err)
+		fmt.Printf("Error Adding Ticket to DB: %s\n", err)
 	}
 
 	return c.String(http.StatusOK, baseURL+"report/"+ticketID)
@@ -198,7 +201,7 @@ func migrateDB(db *sql.DB, file string) error {
 	return nil
 }
 
-func addTicketToDB(db *sql.DB, id string, ticket Ticket) (int64, error) {
+func addTicketToDB(db *sql.DB, ticket *Ticket) (int64, error) {
 	sql := "INSERT INTO tickets(id, title, description, createdAt, createdBy) VALUES(?, ?, ?, ?, ?)"
 
 	stmt, err := db.Prepare(sql)
@@ -209,7 +212,7 @@ func addTicketToDB(db *sql.DB, id string, ticket Ticket) (int64, error) {
 
 	defer stmt.Close()
 
-	result, err := stmt.Exec(id, ticket.Title, ticket.Description, ticket.Created, ticket.User)
+	result, err := stmt.Exec(ticket.ID, ticket.Title, ticket.Description, ticket.Created, ticket.User)
 
 	if err != nil {
 		panic(err)
@@ -218,7 +221,7 @@ func addTicketToDB(db *sql.DB, id string, ticket Ticket) (int64, error) {
 	return result.LastInsertId()
 }
 
-func updateTicket(db *sql.DB, id string, ticket Ticket) (int64, error) {
+func updateTicket(db *sql.DB, ticket *Ticket) (int64, error) {
 	sql := "UPDATE tickets SET title = (?), description = (?) WHERE id = (?)"
 
 	stmt, err := db.Prepare(sql)
@@ -229,7 +232,7 @@ func updateTicket(db *sql.DB, id string, ticket Ticket) (int64, error) {
 
 	defer stmt.Close()
 
-	result, err := stmt.Exec(ticket.Title, ticket.Description, id)
+	result, err := stmt.Exec(ticket.Title, ticket.Description, ticket.ID)
 
 	if err != nil {
 		panic(err)
@@ -255,7 +258,9 @@ func getTicketFromDB(db *sql.DB, id string) (Ticket, error) {
 		panic(err)
 	}
 
-	ticket := Ticket{}
+	ticket := Ticket{
+		ID: id,
+	}
 
 	// Only care about first result, searching by key anyway
 	isFirst := true
@@ -269,7 +274,7 @@ func getTicketFromDB(db *sql.DB, id string) (Ticket, error) {
 	return ticket, nil
 }
 
-func getAllTicketsFromDB(db *sql.DB) (map[string]Ticket, error) {
+func getAllTicketsFromDB(db *sql.DB) ([]Ticket, error) {
 	sql := "SELECT id, title FROM tickets"
 	rows, err := db.Query(sql)
 
@@ -279,17 +284,16 @@ func getAllTicketsFromDB(db *sql.DB) (map[string]Ticket, error) {
 
 	defer rows.Close()
 
-	ticketMap := make(map[string]Ticket)
-	var ID string
+	ticketList := make([]Ticket, 0)
 	for rows.Next() {
 		ticket := Ticket{}
-		err := rows.Scan(&ID, &ticket.Title)
+		err := rows.Scan(&ticket.ID, &ticket.Title)
 
 		if err != nil {
 			panic(err)
 		}
-		ticketMap[ID] = ticket
+		ticketList = append(ticketList, ticket)
 	}
 
-	return ticketMap, nil
+	return ticketList, nil
 }

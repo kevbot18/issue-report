@@ -10,9 +10,9 @@
     <h1>Tickets</h1>
     <p>Total Tickets: {{len .}}</p>
     <ul>
-    {{range $key, $value := .}}
+    {{range $ticket := .}}
     <li>
-        <a href="/report/{{$key}}">{{$value.Title}}</a>
+        <a href="/report/{{$ticket.ID}}">{{$ticket.Title}}</a>
     </li>
     {{end}}
 </ul>
