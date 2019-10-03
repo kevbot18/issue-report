@@ -13,6 +13,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/labstack/echo/middleware"
+
 	"github.com/labstack/echo"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -53,8 +55,8 @@ func init() {
 	fmt.Printf("Server Root URL at %s using Port %s\n", baseURL, port)
 }
 
-type Issue struct {
-	// TODO: Add ID to Issue
+type Ticket struct {
+	// TODO: Add ID to Ticket
 	// ID          string
 	User        string
 	Title       string
@@ -75,7 +77,7 @@ func main() {
 	var err error = nil
 
 	// set up DB
-	db, err = setupDB("issues.db")
+	db, err = setupDB("tickets.db")
 	if err != nil {
 		panic(err)
 	}
@@ -89,31 +91,38 @@ func main() {
 	}
 
 	e := echo.New()
+	e.Pre(middleware.RemoveTrailingSlash())
 	e.Renderer = t
 	e.HideBanner = true
 
 	e.GET("/report/:id", editReport)
 	e.POST("/report/:id", updateReport)
+	e.GET("/report", func(c echo.Context) error {
+		return c.Redirect(http.StatusPermanentRedirect, baseURL)
+	})
 	e.POST("/report", newReport)
-	e.GET("/", mainPage)
+	e.GET("*/*", mainPage)
 	e.Logger.Fatal(e.Start(":" + port))
 }
 
 func mainPage(c echo.Context) error {
-	issues, err := getAllIssuesFromDB(db)
+	tickets, err := getAllTicketsFromDB(db)
 	if err != nil {
 		panic(err)
 	}
-	return c.Render(http.StatusOK, "list", issues)
+	return c.Render(http.StatusOK, "list", tickets)
 }
 
 func editReport(c echo.Context) error {
 	id := c.Param("id")
-	issue, err := getIssueFromDB(db, id)
-	if err != nil {
-		return c.Redirect(http.StatusNotFound, "/")
+	ticket, err := getTicketFromDB(db, id)
+
+	// Empty title means no results
+	if ticket.Title == "" || err != nil {
+		fmt.Println("Not Found")
+		return c.Redirect(http.StatusTemporaryRedirect, baseURL)
 	}
-	return c.Render(http.StatusOK, "report", issue)
+	return c.Render(http.StatusOK, "report", ticket)
 }
 
 func updateReport(c echo.Context) error {
@@ -121,17 +130,16 @@ func updateReport(c echo.Context) error {
 	title := c.FormValue("title")
 	description := c.FormValue("description")
 
-	issue := Issue{
+	ticket := Ticket{
 		Title:       title,
 		Description: description,
-		User:        "Unchanged",
 	}
 
-	_, err := updateIssue(db, id, issue)
+	_, err := updateTicket(db, id, ticket)
 	if err != nil {
 		return c.NoContent(http.StatusNotFound)
 	}
-	return c.Render(http.StatusOK, "report", issue)
+	return editReport(c)
 }
 
 func newReport(c echo.Context) error {
@@ -142,23 +150,23 @@ func newReport(c echo.Context) error {
 
 	cTime := time.Now().UTC().Format(time.ANSIC)
 
-	issueHash := sha1.Sum([]byte(cTime + data["user_id"][0] + data["text"][0]))
+	ticketHash := sha1.Sum([]byte(cTime + data["user_id"][0] + data["text"][0]))
 
-	issueID := hex.EncodeToString(issueHash[:])
+	ticketID := hex.EncodeToString(ticketHash[:])
 
-	issue := Issue{
+	ticket := Ticket{
 		User:        data["user_id"][0],
 		Title:       data["text"][0],
-		Description: "Describe issue here",
+		Description: "Describe ticket here",
 		Created:     cTime,
 	}
 
-	_, err = addIssueToDB(db, issueID, issue)
+	_, err = addTicketToDB(db, ticketID, ticket)
 	if err != nil {
-		fmt.Errorf("Error Adding Issue to DB: %s", err)
+		fmt.Errorf("Error Adding Ticket to DB: %s", err)
 	}
 
-	return c.String(http.StatusOK, baseURL+"report/"+issueID)
+	return c.String(http.StatusOK, baseURL+"report/"+ticketID)
 }
 
 func setupDB(file string) (*sql.DB, error) {
@@ -190,8 +198,8 @@ func migrateDB(db *sql.DB, file string) error {
 	return nil
 }
 
-func addIssueToDB(db *sql.DB, id string, issue Issue) (int64, error) {
-	sql := "INSERT INTO issues(id, title, description, createdAt, createdBy) VALUES(?, ?, ?, ?, ?)"
+func addTicketToDB(db *sql.DB, id string, ticket Ticket) (int64, error) {
+	sql := "INSERT INTO tickets(id, title, description, createdAt, createdBy) VALUES(?, ?, ?, ?, ?)"
 
 	stmt, err := db.Prepare(sql)
 
@@ -201,7 +209,7 @@ func addIssueToDB(db *sql.DB, id string, issue Issue) (int64, error) {
 
 	defer stmt.Close()
 
-	result, err := stmt.Exec(id, issue.Title, issue.Description, issue.Created, issue.User)
+	result, err := stmt.Exec(id, ticket.Title, ticket.Description, ticket.Created, ticket.User)
 
 	if err != nil {
 		panic(err)
@@ -210,8 +218,8 @@ func addIssueToDB(db *sql.DB, id string, issue Issue) (int64, error) {
 	return result.LastInsertId()
 }
 
-func updateIssue(db *sql.DB, id string, issue Issue) (int64, error) {
-	sql := "UPDATE issues SET title = (?), description = (?) WHERE id = (?)"
+func updateTicket(db *sql.DB, id string, ticket Ticket) (int64, error) {
+	sql := "UPDATE tickets SET title = (?), description = (?) WHERE id = (?)"
 
 	stmt, err := db.Prepare(sql)
 
@@ -221,7 +229,7 @@ func updateIssue(db *sql.DB, id string, issue Issue) (int64, error) {
 
 	defer stmt.Close()
 
-	result, err := stmt.Exec(issue.Title, issue.Description, id)
+	result, err := stmt.Exec(ticket.Title, ticket.Description, id)
 
 	if err != nil {
 		panic(err)
@@ -230,8 +238,8 @@ func updateIssue(db *sql.DB, id string, issue Issue) (int64, error) {
 	return result.RowsAffected()
 }
 
-func getIssueFromDB(db *sql.DB, id string) (Issue, error) {
-	sql := "SELECT title, description, createdBy FROM issues WHERE id = (?)"
+func getTicketFromDB(db *sql.DB, id string) (Ticket, error) {
+	sql := "SELECT title, description, createdBy FROM tickets WHERE id = (?)"
 
 	stmt, err := db.Prepare(sql)
 
@@ -241,21 +249,28 @@ func getIssueFromDB(db *sql.DB, id string) (Issue, error) {
 
 	defer stmt.Close()
 
-	row := stmt.QueryRow(id)
-
-	issue := Issue{}
-
-	err = row.Scan(&issue.Title, &issue.Description, &issue.User)
+	rows, err := stmt.Query(id)
 
 	if err != nil {
 		panic(err)
 	}
 
-	return issue, nil
+	ticket := Ticket{}
+
+	// Only care about first result, searching by key anyway
+	isFirst := true
+	for rows.Next() && isFirst {
+		isFirst = false
+		err = rows.Scan(&ticket.Title, &ticket.Description, &ticket.User)
+
+		rows.Close()
+	}
+
+	return ticket, nil
 }
 
-func getAllIssuesFromDB(db *sql.DB) (map[string]Issue, error) {
-	sql := "SELECT id, title FROM issues"
+func getAllTicketsFromDB(db *sql.DB) (map[string]Ticket, error) {
+	sql := "SELECT id, title FROM tickets"
 	rows, err := db.Query(sql)
 
 	if err != nil {
@@ -264,17 +279,17 @@ func getAllIssuesFromDB(db *sql.DB) (map[string]Issue, error) {
 
 	defer rows.Close()
 
-	issueMap := make(map[string]Issue)
+	ticketMap := make(map[string]Ticket)
 	var ID string
 	for rows.Next() {
-		issue := Issue{}
-		err := rows.Scan(&ID, &issue.Title)
+		ticket := Ticket{}
+		err := rows.Scan(&ID, &ticket.Title)
 
 		if err != nil {
 			panic(err)
 		}
-		issueMap[ID] = issue
+		ticketMap[ID] = ticket
 	}
 
-	return issueMap, nil
+	return ticketMap, nil
 }
