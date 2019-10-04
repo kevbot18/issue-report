@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/labstack/echo/middleware"
@@ -144,6 +146,12 @@ func updateReport(c echo.Context) error {
 	return editReport(c)
 }
 
+type SlackMessage struct {
+	Response    string        `json:"response_type"`
+	Text        string        `json:"text"`
+	Attachments []interface{} `json:"attachments"`
+}
+
 func newReport(c echo.Context) error {
 	data, err := c.FormParams()
 	if err != nil {
@@ -152,7 +160,11 @@ func newReport(c echo.Context) error {
 
 	cTime := time.Now().UTC().Format(time.ANSIC)
 
-	ticketHash := sha1.Sum([]byte(cTime + data["user_id"][0] + data["text"][0]))
+	user := data["user_id"][0]
+
+	title := data["text"][0]
+
+	ticketHash := sha1.Sum([]byte(cTime + user + title))
 
 	ticketID := hex.EncodeToString(ticketHash[:])
 
@@ -169,7 +181,33 @@ func newReport(c echo.Context) error {
 		fmt.Printf("Error Adding Ticket to DB: %s\n", err)
 	}
 
-	return c.String(http.StatusOK, baseURL+"report/"+ticketID)
+	go sendTicketCreatedMessage(data["response_url"][0], &ticket)
+
+	return c.NoContent(http.StatusOK)
+}
+
+func sendTicketCreatedMessage(msgURL string, ticket *Ticket) {
+
+	responseText := "Ticket \"" + ticket.Title + "\" created by <@" + ticket.User + ">."
+
+	ticketURL := baseURL + "report/" + ticket.ID
+
+	var attachments []interface{}
+	attachments = append(attachments, map[string]string{"text": ticketURL})
+
+	response := &SlackMessage{
+		Response:    "in_channel",
+		Text:        responseText,
+		Attachments: attachments,
+	}
+
+	jsonData, err := json.Marshal(response)
+
+	if err != nil {
+		panic(err)
+	}
+
+	http.Post(msgURL, "application/json", bytes.NewBuffer(jsonData))
 }
 
 func setupDB(file string) (*sql.DB, error) {
