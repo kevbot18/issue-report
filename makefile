@@ -1,9 +1,9 @@
 CC=musl-gcc
 
-all: alert
+all: ticket
 
-alert: alert.go
-	CC=$(CC) go build --ldflags '-linkmode external -extldflags "-static"' alert.go
+ticket: ticket.go
+	CC=$(CC) go build --ldflags '-linkmode external -extldflags "-static"' ticket.go
 
-clean: alert
-	rm alert
+clean: ticket
+	rm ticket
