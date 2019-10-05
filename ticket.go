@@ -54,11 +54,11 @@ func setVars() {
 }
 
 type Ticket struct {
-	ID          string
-	User        string
-	Title       string
-	Description string
-	Created     string
+	ID          string `json:"id" db:"id"`
+	User        string `json:"user" db:"createdBy"`
+	Title       string `json:"title" db:"title"`
+	Description string `json:"description" db:"title"`
+	Created     string `json:"created" db:"createdAt"`
 }
 
 type Template struct {
@@ -108,7 +108,6 @@ func main() {
 }
 
 func mainPage(c echo.Context) error {
-	fmt.Println("Tickets DB: ", tickets.DB)
 	tickets, err := tickets.getAllTickets()
 	if err != nil {
 		panic(err)

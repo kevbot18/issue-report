@@ -2,9 +2,7 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"io/ioutil"
-
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -49,60 +47,28 @@ func (t TicketsDB) migrateDB(sqlFiles ...string) error {
 		}
 	}
 
-	fmt.Println("DB: ", t.DB)
-
 	return nil
 }
 
-// GetAllTickets returns Tickets with cols filled in
-func (t TicketsDB) getAllTickets(cols ...string) ([]Ticket, error) {
-	sql := "SELECT "
+// GetAllTickets returns array of all tickets
+// Only Title and ID are filled in
+func (t TicketsDB) getAllTickets() ([]Ticket, error) {
 
-	// add in requested columns
-	for range cols {
-		sql += "(?) "
-	}
+	sql := "SELECT id, title FROM tickets"
 
-	sql += "FROM tickets"
-
-
-	rows, err := t.DB.Query(sql, cols)
-
+	rows, err := t.DB.Query(sql)
 	if err != nil {
 		panic(err)
 	}
 
 	defer rows.Close()
 
-	// get total number of columns
-	// TODO: Look into proper error handling
-	colNames, _ := rows.Columns()
-
 	ticketList := make([]Ticket, 0)
-
 	for rows.Next() {
-		// store results to map to assign them to Ticket values properly
-
-		// map slice to store column values
-		columns := make([]interface{}, len(colNames))
-		// store pointers to each item in column
-		columnPtr := make([]interface{}, len(colNames))
-
-		for i := range columns {
-			columnPtr[i] = &columns[i]
-		}
-
-		if err := rows.Scan(columns...); err != nil {
+		ticket := Ticket{}
+		if err := rows.Scan(&ticket.ID, &ticket.Title); err != nil {
 			return nil, err
 		}
-
-		m := make(map[string]interface{})
-		for i, colName := range colNames {
-			m[colName] = *columnPtr[i].(*interface{})
-		}
-
-		// Fill in ticket info from map values
-		ticket := Ticket{}
 		ticketList = append(ticketList, ticket)
 	}
 
