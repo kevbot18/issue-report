@@ -3,14 +3,12 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -18,7 +16,6 @@ import (
 	"github.com/labstack/echo/middleware"
 
 	"github.com/labstack/echo"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -27,11 +24,10 @@ var (
 	insecure bool
 
 	setupSQL string
-
-	db *sql.DB
+	tickets  TicketsDB
 )
 
-func init() {
+func setVars() {
 	flag.StringVar(&port, "port", "443", "port to run server on")
 	flag.BoolVar(&insecure, "insecure", false, "allow non-https connections")
 	flag.StringVar(&baseURL, "url", "127.0.0.1", "base URL of the server")
@@ -58,11 +54,11 @@ func init() {
 }
 
 type Ticket struct {
-	ID          string
-	User        string
-	Title       string
-	Description string
-	Created     string
+	ID          string `json:"id" db:"id"`
+	User        string `json:"user" db:"createdBy"`
+	Title       string `json:"title" db:"title"`
+	Description string `json:"description" db:"title"`
+	Created     string `json:"created" db:"createdAt"`
 }
 
 type Template struct {
@@ -73,17 +69,22 @@ func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Con
 	return t.templates.ExecuteTemplate(w, name, data)
 }
 
+func setup() {
+
+	// sets up global variables based on CLI args
+	setVars()
+
+	// set up database
+	var err error
+	if tickets, err = NewTicketsDB("tickets.db", "setup.sql"); err != nil {
+		panic("Could Not Create Database")
+	}
+}
+
 func main() {
 
-	var err error = nil
-
-	// set up DB
-	db, err = setupDB("tickets.db")
-	if err != nil {
-		panic(err)
-	}
-
-	db.Stats()
+	// sets up database
+	setup()
 
 	// set up webserver
 
@@ -107,7 +108,7 @@ func main() {
 }
 
 func mainPage(c echo.Context) error {
-	tickets, err := getAllTicketsFromDB(db)
+	tickets, err := tickets.getAllTickets()
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +117,7 @@ func mainPage(c echo.Context) error {
 
 func editReport(c echo.Context) error {
 	id := c.Param("id")
-	ticket, err := getTicketFromDB(db, id)
+	ticket, err := tickets.getTicketByID(id)
 
 	// Empty title means no results
 	if ticket.Title == "" || err != nil {
@@ -139,7 +140,7 @@ func updateReport(c echo.Context) error {
 		Description: description,
 	}
 
-	_, err := updateTicket(db, &ticket)
+	_, err := tickets.updateTicket(&ticket)
 	if err != nil {
 		return c.NoContent(http.StatusNotFound)
 	}
@@ -176,7 +177,7 @@ func newReport(c echo.Context) error {
 		Created:     cTime,
 	}
 
-	_, err = addTicketToDB(db, &ticket)
+	_, err = tickets.addTicket(&ticket)
 	if err != nil {
 		fmt.Printf("Error Adding Ticket to DB: %s\n", err)
 	}
@@ -208,130 +209,4 @@ func sendTicketCreatedMessage(msgURL string, ticket *Ticket) {
 	}
 
 	http.Post(msgURL, "application/json", bytes.NewBuffer(jsonData))
-}
-
-func setupDB(file string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", file)
-
-	if err != nil || db == nil {
-		return nil, err
-	}
-
-	if migrateDB(db, setupSQL) != nil {
-		return nil, err
-	}
-
-	return db, nil
-}
-
-func migrateDB(db *sql.DB, file string) error {
-	setupScript, err := ioutil.ReadFile(setupSQL)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Exec(string(setupScript))
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func addTicketToDB(db *sql.DB, ticket *Ticket) (int64, error) {
-	sql := "INSERT INTO tickets(id, title, description, createdAt, createdBy) VALUES(?, ?, ?, ?, ?)"
-
-	stmt, err := db.Prepare(sql)
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer stmt.Close()
-
-	result, err := stmt.Exec(ticket.ID, ticket.Title, ticket.Description, ticket.Created, ticket.User)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return result.LastInsertId()
-}
-
-func updateTicket(db *sql.DB, ticket *Ticket) (int64, error) {
-	sql := "UPDATE tickets SET title = (?), description = (?) WHERE id = (?)"
-
-	stmt, err := db.Prepare(sql)
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer stmt.Close()
-
-	result, err := stmt.Exec(ticket.Title, ticket.Description, ticket.ID)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return result.RowsAffected()
-}
-
-func getTicketFromDB(db *sql.DB, id string) (Ticket, error) {
-	sql := "SELECT title, description, createdBy FROM tickets WHERE id = (?)"
-
-	stmt, err := db.Prepare(sql)
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer stmt.Close()
-
-	rows, err := stmt.Query(id)
-
-	if err != nil {
-		panic(err)
-	}
-
-	ticket := Ticket{
-		ID: id,
-	}
-
-	// Only care about first result, searching by key anyway
-	isFirst := true
-	for rows.Next() && isFirst {
-		isFirst = false
-		err = rows.Scan(&ticket.Title, &ticket.Description, &ticket.User)
-
-		rows.Close()
-	}
-
-	return ticket, nil
-}
-
-func getAllTicketsFromDB(db *sql.DB) ([]Ticket, error) {
-	sql := "SELECT id, title FROM tickets"
-	rows, err := db.Query(sql)
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer rows.Close()
-
-	ticketList := make([]Ticket, 0)
-	for rows.Next() {
-		ticket := Ticket{}
-		err := rows.Scan(&ticket.ID, &ticket.Title)
-
-		if err != nil {
-			panic(err)
-		}
-		ticketList = append(ticketList, ticket)
-	}
-
-	return ticketList, nil
 }
