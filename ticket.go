@@ -8,14 +8,12 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/middleware"
-
-	"github.com/labstack/echo"
+	"github.com/julienschmidt/httprouter"
 )
 
 var (
@@ -25,6 +23,8 @@ var (
 
 	setupSQL string
 	tickets  TicketsDB
+
+	tmpl *template.Template
 )
 
 func setVars() {
@@ -61,14 +61,6 @@ type Ticket struct {
 	Created     string `json:"created" db:"createdAt"`
 }
 
-type Template struct {
-	templates *template.Template
-}
-
-func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-	return t.templates.ExecuteTemplate(w, name, data)
-}
-
 func setup() {
 
 	// sets up global variables based on CLI args
@@ -79,6 +71,8 @@ func setup() {
 	if tickets, err = NewTicketsDB("tickets.db", "setup.sql"); err != nil {
 		panic("Could Not Create Database")
 	}
+
+	tmpl = template.Must(template.ParseGlob("web/*.html"))
 }
 
 func main() {
@@ -87,52 +81,47 @@ func main() {
 	setup()
 
 	// set up webserver
+	router := httprouter.New()
 
-	t := &Template{
-		templates: template.Must(template.ParseGlob("web/*.html")),
-	}
-
-	e := echo.New()
-	e.Pre(middleware.RemoveTrailingSlash())
-	e.Renderer = t
-	e.HideBanner = true
-
-	e.GET("/report/:id", editReport)
-	e.POST("/report/:id", updateReport)
-	e.GET("/report", func(c echo.Context) error {
-		return c.Redirect(http.StatusPermanentRedirect, baseURL)
-	})
-	e.POST("/report", newReport)
-	e.GET("*/*", mainPage)
-	e.Logger.Fatal(e.Start(":" + port))
+	router.GET("/ticket/:id", editTicket)
+	router.POST("/ticket/:id", updateTicket)
+	// router.GET("/ticket", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	// 	http.Redirect(w, r, "/", http.StatusMovedPermanently)
+	// })
+	router.POST("/ticket", newTicket)
+	router.GET("/", mainPage)
+	log.Fatal(http.ListenAndServe(":"+port, router))
 }
 
-func mainPage(c echo.Context) error {
+func mainPage(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	tickets, err := tickets.getAllTickets()
 	if err != nil {
 		panic(err)
 	}
-	return c.Render(http.StatusOK, "list", tickets)
+	tmpl.ExecuteTemplate(w, "list", tickets)
 }
 
-func editReport(c echo.Context) error {
-	id := c.Param("id")
+func editTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	id := ps.ByName("id")
 	ticket, err := tickets.getTicketByID(id)
 
 	// Empty title means no results
 	if ticket.Title == "" || err != nil {
-		return c.Redirect(http.StatusTemporaryRedirect, baseURL)
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("404: Issue Not Found"))
+		return
 	}
 
 	ticket.ID = id
 
-	return c.Render(http.StatusOK, "report", ticket)
+	w.WriteHeader(http.StatusOK)
+	tmpl.ExecuteTemplate(w, "ticket", ticket)
 }
 
-func updateReport(c echo.Context) error {
-	id := c.Param("id")
-	title := c.FormValue("title")
-	description := c.FormValue("description")
+func updateTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	id := ps.ByName("id")
+	title := r.FormValue("title")
+	description := r.FormValue("description")
 
 	ticket := Ticket{
 		ID:          id,
@@ -142,9 +131,11 @@ func updateReport(c echo.Context) error {
 
 	_, err := tickets.updateTicket(&ticket)
 	if err != nil {
-		return c.NoContent(http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
+		return
 	}
-	return editReport(c)
+
+	editTicket(w, r, ps)
 }
 
 type SlackMessage struct {
@@ -153,17 +144,19 @@ type SlackMessage struct {
 	Attachments []interface{} `json:"attachments"`
 }
 
-func newReport(c echo.Context) error {
-	data, err := c.FormParams()
+func newTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	err := r.ParseForm()
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "Error")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Print("Error")
+		return
 	}
 
 	cTime := time.Now().UTC().Format(time.ANSIC)
 
-	user := data["user_id"][0]
+	user := r.Form["user_id"][0]
 
-	title := data["text"][0]
+	title := r.Form["text"][0]
 
 	ticketHash := sha1.Sum([]byte(cTime + user + title))
 
@@ -171,8 +164,8 @@ func newReport(c echo.Context) error {
 
 	ticket := Ticket{
 		ID:          ticketID,
-		User:        data["user_id"][0],
-		Title:       data["text"][0],
+		User:        r.Form["user_id"][0],
+		Title:       r.Form["text"][0],
 		Description: "Describe ticket here",
 		Created:     cTime,
 	}
@@ -182,16 +175,16 @@ func newReport(c echo.Context) error {
 		fmt.Printf("Error Adding Ticket to DB: %s\n", err)
 	}
 
-	go sendTicketCreatedMessage(data["response_url"][0], &ticket)
+	go sendTicketCreatedMessage(r.Form["response_url"][0], &ticket)
 
-	return c.NoContent(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
 func sendTicketCreatedMessage(msgURL string, ticket *Ticket) {
 
 	responseText := "Ticket \"" + ticket.Title + "\" created by <@" + ticket.User + ">."
 
-	ticketURL := baseURL + "report/" + ticket.ID
+	ticketURL := baseURL + port + "ticket/" + ticket.ID
 
 	var attachments []interface{}
 	attachments = append(attachments, map[string]string{"text": ticketURL})
