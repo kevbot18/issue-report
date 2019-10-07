@@ -53,6 +53,8 @@ func setVars() {
 	fmt.Printf("Server Root URL at %s using Port %s\n", baseURL, port)
 }
 
+// Ticket contains all information from ticket in database,
+// and all information shown in the pages.
 type Ticket struct {
 	ID          string `json:"id" db:"id"`
 	User        string `json:"user" db:"createdBy"`
@@ -85,9 +87,6 @@ func main() {
 
 	router.GET("/ticket/:id", editTicket)
 	router.POST("/ticket/:id", updateTicket)
-	// router.GET("/ticket", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	// 	http.Redirect(w, r, "/", http.StatusMovedPermanently)
-	// })
 	router.POST("/ticket", newTicket)
 	router.GET("/", mainPage)
 	log.Fatal(http.ListenAndServe(":"+port, router))
@@ -138,6 +137,7 @@ func updateTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	editTicket(w, r, ps)
 }
 
+// SlackMessage contains the fields used to respond to the slack message.
 type SlackMessage struct {
 	Response    string        `json:"response_type"`
 	Text        string        `json:"text"`
