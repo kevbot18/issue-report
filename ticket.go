@@ -83,12 +83,12 @@ func main() {
 	// set up webserver
 	router := httprouter.New()
 
-	router.GET("/report/:id", editReport)
-	router.POST("/report/:id", updateReport)
-	router.GET("/report", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-		http.Redirect(w, r, baseURL, http.StatusMovedPermanently)
-	})
-	router.POST("/report", newReport)
+	router.GET("/ticket/:id", editTicket)
+	router.POST("/ticket/:id", updateTicket)
+	// router.GET("/ticket", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	// 	http.Redirect(w, r, "/", http.StatusMovedPermanently)
+	// })
+	router.POST("/ticket", newTicket)
 	router.GET("/", mainPage)
 	log.Fatal(http.ListenAndServe(":"+port, router))
 }
@@ -101,7 +101,7 @@ func mainPage(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	tmpl.ExecuteTemplate(w, "list", tickets)
 }
 
-func editReport(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func editTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	id := ps.ByName("id")
 	ticket, err := tickets.getTicketByID(id)
 
@@ -115,10 +115,10 @@ func editReport(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ticket.ID = id
 
 	w.WriteHeader(http.StatusOK)
-	tmpl.ExecuteTemplate(w, "report", ticket)
+	tmpl.ExecuteTemplate(w, "ticket", ticket)
 }
 
-func updateReport(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func updateTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	id := ps.ByName("id")
 	title := r.FormValue("title")
 	description := r.FormValue("description")
@@ -135,7 +135,7 @@ func updateReport(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 		return
 	}
 
-	editReport(w, r, ps)
+	editTicket(w, r, ps)
 }
 
 type SlackMessage struct {
@@ -144,7 +144,7 @@ type SlackMessage struct {
 	Attachments []interface{} `json:"attachments"`
 }
 
-func newReport(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func newTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	err := r.ParseForm()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -184,7 +184,7 @@ func sendTicketCreatedMessage(msgURL string, ticket *Ticket) {
 
 	responseText := "Ticket \"" + ticket.Title + "\" created by <@" + ticket.User + ">."
 
-	ticketURL := baseURL + "report/" + ticket.ID
+	ticketURL := baseURL + port + "ticket/" + ticket.ID
 
 	var attachments []interface{}
 	attachments = append(attachments, map[string]string{"text": ticketURL})
