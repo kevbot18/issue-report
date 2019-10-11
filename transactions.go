@@ -3,10 +3,9 @@ package main
 import (
 	"database/sql"
 	"io/ioutil"
+
 	_ "github.com/mattn/go-sqlite3"
 )
-
-var db TicketsDB
 
 // TicketsDB stores pointer to DB and name of DB
 // Path is name of database (path)
@@ -23,7 +22,7 @@ func NewTicketsDB(dbPath string, setupSQL ...string) (TicketsDB, error) {
 	}
 	tDB := TicketsDB{
 		Path: dbPath,
-		DB: tmpDB,
+		DB:   tmpDB,
 	}
 
 	if err := tDB.migrateDB(setupSQL...); err != nil {
