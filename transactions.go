@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"io/ioutil"
 
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -16,7 +18,7 @@ type TicketsDB struct {
 
 // NewTicketsDB creates a new TicketsDB
 func NewTicketsDB(dbPath string, setupSQL ...string) (TicketsDB, error) {
-	tmpDB, err := sql.Open("sqlite3", dbPath)
+	tmpDB, err := sql.Open(dbType, dbPath)
 	if err != nil {
 		panic("Cannot open database " + dbPath)
 	}

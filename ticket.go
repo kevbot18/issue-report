@@ -18,6 +18,7 @@ var (
 	setupSQL string
 	tickets  TicketsDB
 
+	dbType string
 	dbPath string
 )
 
@@ -26,7 +27,8 @@ func setVars() {
 	flag.BoolVar(&insecure, "insecure", false, "allow non-https connections")
 	flag.StringVar(&baseURL, "url", "127.0.0.1", "base URL of the web server (for Angular frontend)")
 	flag.StringVar(&setupSQL, "sql", "setup.sql", "SQL setup script")
-	flag.StringVar(&dbPath, "db", "tickets.db", "path to DB (file or URL)")
+	flag.StringVar(&dbType, "db", "sqlite3", "database engine to use")
+	flag.StringVar(&dbPath, "dbURL", "tickets.db", "path to DB (file or URL)")
 
 	flag.Parse()
 
