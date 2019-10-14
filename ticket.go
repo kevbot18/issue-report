@@ -32,6 +32,10 @@ func setVars() {
 
 	flag.Parse()
 
+	if port[0] != ':' {
+		port = ":" + port
+	}
+
 	if !((strings.HasPrefix("http://", baseURL) && insecure) || strings.HasPrefix("https://", baseURL)) {
 		if insecure {
 			baseURL = "http://" + baseURL
@@ -40,8 +44,10 @@ func setVars() {
 		}
 	}
 
-	if !(strings.HasSuffix(baseURL, "/")) {
-		baseURL = baseURL + "/"
+	if strings.HasSuffix(baseURL, "/") {
+		baseURL = baseURL[:len(baseURL)-1] + port + "/"
+	} else {
+		baseURL = baseURL + port + "/"
 	}
 
 	if insecure {
@@ -75,5 +81,5 @@ func main() {
 	router.POST("/ticket", newTicket)
 	router.GET("/tickets", getAllTickets)
 
-	log.Fatal(http.ListenAndServe(":"+port, router))
+	log.Fatal(http.ListenAndServe(port, router))
 }

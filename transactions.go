@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"io/ioutil"
 
+	"github.com/google/uuid"
+
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
@@ -79,7 +81,7 @@ func (t TicketsDB) getAllTickets() ([]Ticket, error) {
 // returns a ticket object
 // if ticket was not found, Ticket will be missing it's ID
 // returns error if something goes wrong
-func (t TicketsDB) getTicketByID(ID string) (Ticket, error) {
+func (t TicketsDB) getTicketByID(ID uuid.UUID) (Ticket, error) {
 	sql := "SELECT title, description, createdBy, createdAt FROM tickets WHERE id = (?)"
 
 	stmt, err := t.DB.Prepare(sql)
