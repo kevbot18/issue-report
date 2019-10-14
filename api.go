@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -77,13 +76,6 @@ func updateTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	w.Write([]byte("success"))
 }
 
-// SlackMessage contains the fields used to respond to the slack message.
-type SlackMessage struct {
-	Response    string        `json:"response_type"`
-	Text        string        `json:"text"`
-	Attachments []interface{} `json:"attachments"`
-}
-
 func newTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	err := r.ParseForm()
 	if err != nil {
@@ -114,7 +106,7 @@ func newTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		fmt.Printf("Error Adding Ticket to DB: %s\n", err)
 	}
 
-	go sendTicketCreatedMessage(r.Form["response_url"][0], &ticket)
+	go slackSendTicketCreated(r.Form["response_url"][0], &ticket)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -133,28 +125,4 @@ func getAllTickets(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 		return
 	}
 	w.Write(jsonData)
-}
-
-func sendTicketCreatedMessage(msgURL string, ticket *Ticket) {
-
-	responseText := "Ticket \"" + ticket.Title + "\" created by <@" + ticket.User + ">."
-
-	ticketURL := baseURL + "ticket/" + ticket.ID.String()
-
-	var attachments []interface{}
-	attachments = append(attachments, map[string]string{"text": ticketURL})
-
-	response := &SlackMessage{
-		Response:    "in_channel",
-		Text:        responseText,
-		Attachments: attachments,
-	}
-
-	jsonData, err := json.Marshal(response)
-
-	if err != nil {
-		panic(err)
-	}
-
-	http.Post(msgURL, "application/json", bytes.NewBuffer(jsonData))
 }

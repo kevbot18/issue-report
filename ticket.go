@@ -53,7 +53,7 @@ func setVars() {
 	if insecure {
 		fmt.Println("Running in Insecure Mode.")
 	}
-	fmt.Printf("Server Root URL at %s using Port %s\n", baseURL, port)
+	fmt.Printf("Server Root URL at %s\n", baseURL)
 }
 
 func setup() {
